@@ -16,6 +16,7 @@ import async_timeout
 from logging.handlers import RotatingFileHandler
 import requests
 import threading
+import aiohttp
 
 
 MAX_RETRIES = 3
@@ -53,36 +54,38 @@ logger.propagate = False
 load_dotenv()
 
 app = FastAPI()
+#read API_BASE_URL from .env file, and if not exists, use the second parameter.
+API_BASE_URL = os.getenv("API_BASE_URL", "https://aetab8pjmb.us-east-1.awsapprunner.com/table")
 
-# Database configuration
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "port": int(os.getenv("DB_PORT", 3306)),
-    "user": os.getenv("DB_USER", "root"),
-    "password": os.getenv("DB_PASSWORD", ""),
-    "db": os.getenv("DB_NAME", "patient_db"),
-    "charset": "utf8mb4",
-    "cursorclass": aiomysql.DictCursor
-}
+# # Database configuration
+# DB_CONFIG = {
+#     "host": os.getenv("DB_HOST", "localhost"),
+#     "port": int(os.getenv("DB_PORT", 3306)),
+#     "user": os.getenv("DB_USER", "root"),
+#     "password": os.getenv("DB_PASSWORD", ""),
+#     "db": os.getenv("DB_NAME", "patient_db"),
+#     "charset": "utf8mb4",
+#     "cursorclass": aiomysql.DictCursor
+# }
 
-pool = None
+# pool = None
 
-@app.on_event("startup")
-async def startup():
-    global pool
-    try:
-        pool = await aiomysql.create_pool(**DB_CONFIG)
-        logger.info("Database pool created successfully")
-    except Exception as e:
-        logger.error(f"Database connection failed: {str(e)}")
-        raise
+# @app.on_event("startup")
+# async def startup():
+#     global pool
+#     try:
+#         pool = await aiomysql.create_pool(**DB_CONFIG)
+#         logger.info("Database pool created successfully")
+#     except Exception as e:
+         
+#         raise
 
-@app.on_event("shutdown")
-async def shutdown():
-    if pool:
-        pool.close()
-        await pool.wait_closed()
-        logger.info("Database pool closed")
+# @app.on_event("shutdown")
+# async def shutdown():
+#     if pool:
+#         pool.close()
+#         await pool.wait_closed()
+#         logger.info("Database pool closed")
 
 frontend_origin = os.getenv("FRONTEND_ORIGIN", "*")
 
@@ -95,6 +98,7 @@ app.add_middleware(
 )
 
 class ChatQuery(BaseModel):
+    patient_id: int | None = 1
     message: str
 
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -117,7 +121,8 @@ async def safe_ai_call(func, *args, **kwargs):
         logger.error(f"AI operation failed: {str(e)}")
         return None
 
-
+#This function extracts and validates structured feedback data from user text using an AI model, 
+# ensuring reliability through timeout control, detailed logging, and error handling.
 async def extract_feedback_data(user_input: str) -> Optional[dict]:
     """Data extraction with validation and logging"""
     logger.info(f"Extracting data from: {user_input[:100]}...")
@@ -229,7 +234,7 @@ async def analyze_severity(patient_id: str, treatment: str, feedback: str) -> st
                 logger.error(f"Severity analysis error after {MAX_RETRIES} retries: {str(e)}")
                 return "false"
 
-
+#classify user feedback as either “treatment” or “service” using an AI model
 async def classify_feedback_type(feedback: str) -> str:
     """Classification with schema validation"""
     logger.info(f"Classifying feedback: {feedback}...")
@@ -399,7 +404,8 @@ async def store_in_doctor_mailbox_table(data: dict, suggested_treatment: str) ->
         # Generate missing values if needed
         doctor_id = int(data.get("doctor_id", random.randint(1, 100)))
         doctor_sent = int(data.get("doctor_sent", 0))
-        patient_id = int(data.get("patient_id", random.randint(1, 100)))
+        #patient_id = int(data.get("patient_id", random.randint(1, 100)))
+        patient_id = int(data.get("patient_id", 1))
         clinical_staff_id = int(data.get("clinical_staff_id", random.randint(1, 100)))
         logger.info(type(suggested_treatment))
         # message = json.dumps({
@@ -432,11 +438,11 @@ async def store_in_doctor_mailbox_table(data: dict, suggested_treatment: str) ->
         mock_data = {
             "doctor_id": doctor_id,
             "doctor_sent": doctor_sent,
-            "patient_id": patient_id,
+            "patient_id": "1",
             "clinical_staff_id": clinical_staff_id,
             "message": message
         }
-        logger.info("Data prepared for API request:" + str(mock_data))
+        logger.info("Data prepared for API request:" + str(cd /Users/christine/Downloads/feedback-management-main/backend))
         # Run API request in a separate thread
         threading.Thread(target=send_request, args=(mock_data,)).start()
         logger.info("Data sent to doctor_message_hub API.")
@@ -444,6 +450,29 @@ async def store_in_doctor_mailbox_table(data: dict, suggested_treatment: str) ->
     except Exception as e:
         logger.error(f"Error storing in doctor's mailbox table: {str(e)}")
 
+# API-based Database Access
+# author:Haoyue 20251007
+API_BASE_URL = "https://aetab8pjmb.us-east-1.awsapprunner.com/table/"
+
+def get_from_api(table_name: str):
+    url = f"{API_BASE_URL}{table_name}"
+    try:
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logger.error(f"GET {url} failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch data from API")
+
+def post_to_api(table_name: str, payload: dict):
+    url = f"{API_BASE_URL}{table_name}"
+    try:
+        response = requests.post(url, json=payload, timeout=15)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logger.error(f"POST {url} failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to post data to API")
 
 @app.post("/chatbot/")
 async def handle_chat_request(query: ChatQuery):
