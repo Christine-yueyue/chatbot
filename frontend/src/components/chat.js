@@ -47,18 +47,35 @@ export default function Chat() {
     setInput(""); 
     setIsLoading(true);
 
+    // const input = feedbackInput.value.trim();  // 获取输入内容
+
+    // 尝试从输入中提取 “Patient ID”
+    const match = input.match(/patient id\s*is\s*(\d+)/i);
+
+    // 如果匹配到，就用提取的数字，否则生成 1~100 的随机整数
+    const patientId = match
+      ? parseInt(match[1], 10)
+      : Math.floor(1 + Math.random() * 100);
+
     try {
       const response = await fetch("http://localhost:8000/chatbot/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          patient_id: 1,
-          message: input, 
+          patient_id: patientId,
+          feedback: input, 
         }),
       });
 
+      // Handling Server Errors
+      if (!response.ok) {
+        const err = await response.json();
+        console.error("Server error:", err);
+        return;
+      }
+
       const data = await response.json();
-      const botMessage = { id: Date.now().toString(), role: "assistant", content: data.response };
+      const botMessage = { id: Date.now().toString(), role: "assistant", content: data.assistant_response };
 
       setMessages((prev) => [...prev, botMessage]); // Add AI response to chat
     } catch (error) {

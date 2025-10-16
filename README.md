@@ -1,3 +1,23 @@
+# Patient Feedback Chatobot update 202510
+- **Frontend**: React
+- **Backend**: FastAPI
+
+Input: Patient ID + feedback
+Example: "Hi, my Patient ID is 3. I received blood test before. After starting the new blood pressure medicine, I noticed occasional dizziness and mild headaches. My blood pressure readings are better, but I’m concerned about these side effects."
+
+Output: 
+"Immediate attention required. Your doctor will be notified." ---sever
+"There’s no urgent concern at this time. Please keep track of how you’re feeling."  ---NOT sever
+
+what can it do:
+1. Combine multiple tables' info into a prompt
+2. Generate feedback summary (LLM)
+3. Analyze feedback type (LLM)
+4. Analyze severity (LLM)
+5. Save result to database via API
+6. Return result to frontend (the Output)
+
+
 
 # Patient Feedback Chatobot
 
